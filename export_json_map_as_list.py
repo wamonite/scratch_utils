@@ -1,18 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Export Tiled JSON exported map as text list
+Export JSON map exported from https://www.mapeditor.org/ as text list
 
-* map file is Tiled app exported JSON map
-* tileset CSV file is a lookup from export JSON map tile id to PNG/costume id e.g. <int id>,<costume name>
-* exported file is <prefix>_<map layer id>.csv
-* unless provided, file prefix is map JSON file name without extension
+* map tile layer format must be CSV rather than compressed
+* tileset currently must be JSON format collection of images
 """
 
 from __future__ import print_function, absolute_import
 import argparse
 import sys
-import json
+import pytmx
 
 
 class ScriptException(Exception):
@@ -21,80 +19,70 @@ class ScriptException(Exception):
 
 def get_args():
     parser = argparse.ArgumentParser(description = __doc__, formatter_class = argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--tileset', help = 'tileset lookup CSV')
     parser.add_argument('--prefix', help = 'output file prefix')
-    parser.add_argument('map', nargs = 1, help = 'Tiled map JSON file')
+    parser.add_argument('map', nargs = 1, help = 'exported JSON map file')
 
     return parser.parse_args()
 
 
-def load_tileset(file_name):
-    tileset_lookup = {}
-    with open(file_name) as file_object:
-        for line in file_object:
-            line = line.strip()
-            key, name = line.split(',')
-            tileset_lookup[key] = name
-
-    return tileset_lookup
-
-
-def load_level(file_name):
+def write_map(map_data, prefix):
     try:
-        with open(file_name) as file_object:
-            return json.load(file_object)
+        screen_width = int(map_data.properties.get('screen_width'))
+        screen_height = int(map_data.properties.get('screen_height'))
+    except Exception:
+        raise ScriptException('screen_width and screen_height need to be set as custom map properties')
 
-    except Exception as ex:
-        raise ScriptException("failed to load file={} error='{}:{}'".format(
-            file_name,
-            ex.__class__.__name__,
-            ex,
-        ))
+    print('screen size {} x {}'.format(screen_width, screen_height))
 
+    for layer in map_data.visible_layers:
+        map_width = layer.width
+        map_height = layer.height
+        print('map size in tiles {} x {}'.format(map_width, map_height))
 
-def write_level(level_data, tileset_lookup, prefix):
-    for layer_idx, layer in enumerate(level_data['layers']):
-        file_name = '{}_{}.csv'.format(prefix, layer_idx)
-        row_list = []
-        row_width = layer['width']
-        tile_count = 0
-        row_buffer = []
-        for tile in layer['data']:
-            tile_name = tileset_lookup[str(tile)] if tileset_lookup else tile
-            row_buffer.append(tile_name)
+        screen_x_max = map_height / screen_height
+        screen_y_max = map_width / screen_width
+        print('map size in screens {} x {}'.format(screen_x_max, screen_y_max))
 
-            tile_count += 1
+        tile_src_list = list(layer.tiles())
+        tile_output_list = []
+        for screen_y in range(screen_y_max):
+            for screen_x in range(screen_x_max):
+                print('screen {}, {}'.format(screen_x, screen_y))
 
-            if tile_count == row_width:
-                row_list.append(row_buffer)
-                row_buffer = []
-                tile_count = 0
+                screen_offset = screen_y * map_width * screen_height + screen_x * screen_width
+                print('screen offset {}'.format(screen_offset))
+                for y in range(screen_height):
+                    for x in range(screen_width):
+                        tile_offset = y * map_width + x + screen_offset
+                        # print('tile offset {}'.format(tile_offset))
 
-        if row_buffer:
-            row_list.append(row_buffer)
+                        tile_x, tile_y, tile_info = tile_src_list[tile_offset]
+                        tile_name = tile_info[0]
+                        tile_key = tile_name.split('.')[0]
+
+                        tile_output_list.append(tile_key)
+
+        layer_name = layer.name
+        file_name = '{}_{}.csv'.format(prefix, layer_name)
 
         print('writing {}'.format(file_name))
 
         with open(file_name, 'w') as file_object:
-            for row in reversed(row_list):
-                for tile in row:
-                    file_object.write('{}\n'.format(tile))
+            for tile in tile_output_list:
+                file_object.write('{}\n'.format(tile))
 
 
 def main():
     args = get_args()
 
-    level_file_name = args.level[0]
-    tileset_file_name = args.tileset
-
-    level_data = load_level(level_file_name)
-    tileset_lookup = load_tileset(tileset_file_name) if tileset_file_name else {}
+    map_file_name = args.map[0]
+    map_data = pytmx.TiledMap(map_file_name)
 
     file_prefix = args.prefix
     if not file_prefix:
-        file_prefix = level_file_name.split('.')[0]
+        file_prefix = map_file_name.split('.')[0]
 
-    write_level(level_data, tileset_lookup, file_prefix)
+    write_map(map_data, file_prefix)
 
 
 def run():
