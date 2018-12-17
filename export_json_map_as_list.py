@@ -38,7 +38,8 @@ def write_map(map_data, prefix, empty_tile_name):
 
     print('screen size {} x {}'.format(screen_width, screen_height))
 
-    for layer in map_data.visible_layers:
+    for layer_id in map_data.visible_tile_layers:
+        layer = map_data.layers[layer_id]
         layer_name = layer.name
         print("processing layer '{}'".format(layer_name))
 
@@ -67,7 +68,7 @@ def write_map(map_data, prefix, empty_tile_name):
                             tile_info = map_data.get_tile_properties(
                                 x + screen_x_offset,
                                 y + screen_y_offset,
-                                layer.id,
+                                layer_id,
                             )
 
                             if tile_info:
