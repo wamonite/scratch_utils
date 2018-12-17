@@ -3,14 +3,17 @@
 """
 Export JSON map exported from https://www.mapeditor.org/ as text list
 
-* map tile layer format must be CSV rather than compressed
-* tileset currently must be JSON format collection of images
+* tileset use has only been tested with embedded collections of images
 """
 
 from __future__ import print_function, absolute_import
 import argparse
 import sys
 import pytmx
+import os
+
+
+TILE_EMPTY_NAME = 'empty'
 
 
 class ScriptException(Exception):
@@ -20,12 +23,13 @@ class ScriptException(Exception):
 def get_args():
     parser = argparse.ArgumentParser(description = __doc__, formatter_class = argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--prefix', help = 'output file prefix')
+    parser.add_argument('--empty', default = TILE_EMPTY_NAME, help = 'name to use for empty tile')
     parser.add_argument('map', nargs = 1, help = 'exported JSON map file')
 
     return parser.parse_args()
 
 
-def write_map(map_data, prefix):
+def write_map(map_data, prefix, empty_tile_name):
     try:
         screen_width = int(map_data.properties.get('screen_width'))
         screen_height = int(map_data.properties.get('screen_height'))
@@ -35,6 +39,9 @@ def write_map(map_data, prefix):
     print('screen size {} x {}'.format(screen_width, screen_height))
 
     for layer in map_data.visible_layers:
+        layer_name = layer.name
+        print("processing layer '{}'".format(layer_name))
+
         map_width = layer.width
         map_height = layer.height
         print('map size in tiles {} x {}'.format(map_width, map_height))
@@ -43,33 +50,51 @@ def write_map(map_data, prefix):
         screen_y_max = map_width / screen_width
         print('map size in screens {} x {}'.format(screen_x_max, screen_y_max))
 
-        tile_src_list = list(layer.tiles())
         tile_output_list = []
-        for screen_y in range(screen_y_max):
-            for screen_x in range(screen_x_max):
-                print('screen {}, {}'.format(screen_x, screen_y))
+        try:
+            for screen_y in range(screen_y_max):
+                screen_y_offset = screen_y * screen_height
+                for screen_x in range(screen_x_max):
+                    print('screen {}, {}'.format(screen_x, screen_y))
 
-                screen_offset = screen_y * map_width * screen_height + screen_x * screen_width
-                print('screen offset {}'.format(screen_offset))
-                for y in range(screen_height):
-                    for x in range(screen_width):
-                        tile_offset = y * map_width + x + screen_offset
-                        # print('tile offset {}'.format(tile_offset))
+                    screen_x_offset = screen_x * screen_width
+                    for y in range(screen_height):
+                        for x in range(screen_width):
+                            # print('screen offset {} x {}'.format(
+                            #     x + screen_x_offset,
+                            #     y + screen_y_offset,
+                            # ))
+                            tile_info = map_data.get_tile_properties(
+                                x + screen_x_offset,
+                                y + screen_y_offset,
+                                layer.id,
+                            )
 
-                        tile_x, tile_y, tile_info = tile_src_list[tile_offset]
-                        tile_name = tile_info[0]
-                        tile_key = tile_name.split('.')[0]
+                            if tile_info:
+                                tile_path = tile_info['source']
+                                tile_name = os.path.basename(tile_path)
+                                tile_key = os.path.splitext(tile_name)[0]
 
-                        tile_output_list.append(tile_key)
+                            else:
+                                tile_key = empty_tile_name
 
-        layer_name = layer.name
-        file_name = '{}_{}.csv'.format(prefix, layer_name)
+                            tile_output_list.append(tile_key)
 
-        print('writing {}'.format(file_name))
+        except Exception as ex:
+            print("failed to parse layer '{}' error '{}:{}'".format(
+                layer_name,
+                ex.__class__.__name__,
+                ex,
+            ))
 
-        with open(file_name, 'w') as file_object:
-            for tile in tile_output_list:
-                file_object.write('{}\n'.format(tile))
+        else:
+            file_name = '{}_{}.csv'.format(prefix, layer_name)
+
+            print('writing {}'.format(file_name))
+
+            with open(file_name, 'w') as file_object:
+                for tile in tile_output_list:
+                    file_object.write('{}\n'.format(tile))
 
 
 def main():
@@ -82,7 +107,7 @@ def main():
     if not file_prefix:
         file_prefix = map_file_name.split('.')[0]
 
-    write_map(map_data, file_prefix)
+    write_map(map_data, file_prefix, args.empty)
 
 
 def run():
