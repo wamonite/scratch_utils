@@ -24,7 +24,7 @@ def get_args():
     parser = argparse.ArgumentParser(description = __doc__, formatter_class = argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--prefix', help = 'output file prefix')
     parser.add_argument('--empty', default = TILE_EMPTY_NAME, help = 'name to use for empty tile')
-    parser.add_argument('map', nargs = 1, help = 'exported JSON map file')
+    parser.add_argument('map', nargs = 1, help = 'TMX file')
 
     return parser.parse_args()
 
@@ -106,7 +106,7 @@ def main():
 
     file_prefix = args.prefix
     if not file_prefix:
-        file_prefix = map_file_name.split('.')[0]
+        file_prefix = os.path.splitext(map_file_name)[0]
 
     write_map(map_data, file_prefix, args.empty)
 
